@@ -12,7 +12,7 @@ The first version of this ran as a Home Assistant automation over WiFi. Placed ~
 
 ## Tested behavior
 
-Verified by breathing directly onto the DHT11 to spike humidity in a controlled test (video in `/docs`): humidity rises to ~95% → fan jumps to full speed → sensor dries out over the next ~30-60s → fan steps back down through the tiers (60% → 25% → off) as humidity falls, re-evaluating every 10 seconds. Matches the designed behavior exactly.
+Verified by breathing directly onto the DHT11 to spike humidity in a controlled test (video in `docs/humidity-test-demo.mp4`): humidity rises to ~95% → fan jumps to full speed → sensor dries out over the next ~30-60s → fan steps back down through the tiers (60% → 25% → off) as humidity falls, re-evaluating every 10 seconds. Matches the designed behavior exactly.
 
 ## Hardware
 
