@@ -53,9 +53,11 @@ Full config: [`vent-controller.yaml`](./vent-controller.yaml).
 
 *(add your photos/video here)*
 
-- `docs/buck-converter.jpg`
-- `docs/oled-display.jpg`
-- `docs/ha-dashboard.jpg`
+- IMG_5693.jpeg
+- IMG_5692.jpeg
+- IMG_5690.jpeg
+- IMG_5689.jpeg
+- IMG_5688.jpeg
 - [`docs/humidity-test-demo.mp4`](https://youtube.com/shorts/SiKE0LYzvxw?feature=share) — 1-minute test video (breath test on DHT11)
 
 ## Next iteration
