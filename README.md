@@ -51,8 +51,6 @@ Full config: [`vent-controller.yaml`](./vent-controller.yaml).
 
 ## Media
 
-*(add your photos/video here)*
-
 - IMG_5693.jpeg
 - IMG_5692.jpeg
 - IMG_5690.jpeg
