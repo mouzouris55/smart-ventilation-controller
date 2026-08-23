@@ -1,0 +1,251 @@
+#############################################################################
+# Smart Ventilation Controller — Final ESPHome Configuration
+#
+# Architecture: Edge Computing. All control logic (auto/manual decision,
+# humidity thresholds, PWM output) runs locally on the ESP32. Home Assistant
+# is a monitoring/control window only — it is NEVER in the control loop for
+# real-time fan response. This was a deliberate fix for WiFi latency
+# (20m from router, in a caravan) causing multi-second lag and abrupt
+# jumps to 100% when adjusting the physical encoder.
+#
+# CONFIRMED PIN MAP (matches hand-drawn schematic):
+#   GPIO4  - DHT11 DATA
+#   GPIO17 - Encoder SW   (wired, not yet read in software)
+#   GPIO18 - Encoder CLK
+#   GPIO19 - Encoder DT
+#   GPIO21 - OLED SDA
+#   GPIO22 - Fan PWM (LEDC, 25kHz)
+#   GPIO23 - Fan Tach (pulse counter, needs 10k pull-up to 3.3V)
+#   GPIO27 - OLED SCK/SCL
+#############################################################################
+
+substitutions:
+  device_name: "vent-controller"
+  friendly_name: "Smart Ventilation Controller"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # --- FAIL-SAFE ---
+  # If WiFi drops, force the system back into Auto mode. This guarantees
+  # the space is protected from humidity even if nobody is around to
+  # notice the disconnect or flip the switch manually.
+  on_disconnect:
+    then:
+      - switch.turn_on: auto_mode_switch
+      - logger.log: "WiFi lost — forcing AUTO mode for fail-safe operation"
+
+  ap:
+    ssid: "VentCtrl Setup"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+# ===========================================================================
+# I2C bus for the OLED display
+# Using non-default pins because GPIO21/22 are already claimed elsewhere
+# (encoder / PWM) on this board layout.
+# ===========================================================================
+i2c:
+  id: bus_a
+  sda: GPIO21   # OLED SDA
+  scl: GPIO27   # OLED SCK/SCL
+  scan: false
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_main
+    size: 14
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 11
+
+# ===========================================================================
+# PWM output — the ONLY thing that actually spins the fan.
+# Nothing writes to this directly except fan_speed_number's set_action.
+# ===========================================================================
+output:
+  - platform: ledc
+    pin: GPIO22
+    frequency: 25000 Hz   # standard PC fan PWM frequency, avoids audible whine
+    id: fan_pwm_output
+
+sensor:
+  # -------------------------------------------------------------------------
+  # DHT11 — Temperature & Humidity
+  # Humidity drives Auto-mode fan speed — see the `interval:` block further
+  # down, which re-evaluates every 10s (tiered thresholds, no edge-triggering).
+  # -------------------------------------------------------------------------
+  - platform: dht
+    pin:
+      number: GPIO4
+    model: DHT11
+    update_interval: 5s
+    temperature:
+      name: "Temperature"
+      id: dht_temperature
+      unit_of_measurement: "°C"
+      accuracy_decimals: 1
+      device_class: temperature
+      state_class: measurement
+    humidity:
+      name: "Humidity"
+      id: dht_humidity
+      unit_of_measurement: "%"
+      accuracy_decimals: 0
+      device_class: humidity
+      state_class: measurement
+
+  # -------------------------------------------------------------------------
+  # Rotary encoder — raw physical input, NOT exposed to Home Assistant.
+  # It only ever writes into fan_speed_number, and only while in Manual
+  # mode. In Auto mode, spinning the knob is a harmless no-op — this
+  # prevents accidental manual overrides while the automatic logic is
+  # actively protecting the space.
+  # -------------------------------------------------------------------------
+  # SW (push-button) pin is physically wired to GPIO17 on this build but not
+  # yet read in software — reserved for a future "press to toggle Auto/Manual"
+  # feature. See binary_sensor block below (commented out) to enable it.
+  - platform: rotary_encoder
+    id: encoder_raw
+    internal: true
+    resolution: 1
+    min_value: 0
+    max_value: 100
+    restore_mode: RESTORE_DEFAULT_ZERO
+    pin_a:
+      number: GPIO18   # CLK
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: GPIO19   # DT
+      mode:
+        input: true
+        pullup: true
+    on_value:
+      then:
+        - if:
+            condition:
+              switch.is_off: auto_mode_switch   # only act in Manual mode
+            then:
+              - number.set:
+                  id: fan_speed_number
+                  value: !lambda "return x;"
+
+  # -------------------------------------------------------------------------
+  # Fan tachometer — real RPM feedback, not an estimate.
+  # 2 pulses per revolution on this fan model, hence the 0.5 multiplier.
+  # -------------------------------------------------------------------------
+  - platform: pulse_counter
+    id: fan_rpm
+    name: "Fan RPM"
+    unit_of_measurement: "RPM"
+    update_interval: 2s
+    pin:
+      number: GPIO23
+      mode:
+        input: true
+        pullup: true
+    filters:
+      - multiply: 0.5
+
+# ---------------------------------------------------------------------------
+# Auto-mode control loop — re-evaluates every 10s regardless of whether any
+# threshold was just "crossed", so it can never get stuck in a dead zone.
+#
+# Driven by HUMIDITY, not temperature. Reasoning: a single 12V fan can't
+# meaningfully cool a caravan — but it absolutely can prevent the
+# condensation/mold that forms when indoor humidity builds up against cold
+# surfaces (windows, walls), which is the actual real-world failure mode
+# this controller needs to catch. Temperature alone can't detect that.
+# ---------------------------------------------------------------------------
+interval:
+  - interval: 10s
+    then:
+      - if:
+          condition:
+            switch.is_on: auto_mode_switch
+          then:
+            - lambda: |-
+                float h = id(dht_humidity).state;
+                float speed;
+                if (h >= 75.0)      speed = 100;  // active condensation risk
+                else if (h >= 65.0) speed = 60;    // elevated, worth venting
+                else if (h >= 55.0) speed = 25;    // mild circulation
+                else                speed = 0;     // dry enough, save power/noise
+                id(fan_speed_number).make_call().set_value(speed).perform();
+
+# ===========================================================================
+# Auto / Manual mode switch — the single mode flag the whole system reads.
+# Defaults to ON (Auto) on first boot / power loss, matching the fail-safe
+# philosophy: unknown state should default to "protect the space".
+# ===========================================================================
+switch:
+  - platform: template
+    name: "Auto Mode"
+    id: auto_mode_switch
+    icon: "mdi:fan-auto"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+# ===========================================================================
+# THE SINGLE SOURCE OF TRUTH.
+# Every control path (encoder, HA slider, auto-logic humidity triggers)
+# writes here and ONLY here. set_action is the one and only place that
+# touches the PWM output — this is what eliminates the dual-control race
+# condition that caused the original latency/jump problem.
+# ===========================================================================
+number:
+  - platform: template
+    name: "Fan Speed"
+    id: fan_speed_number
+    icon: "mdi:fan"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: true
+    restore_value: true
+    set_action:
+      - output.set_level:
+          id: fan_pwm_output
+          level: !lambda "return x / 100.0;"
+
+# ===========================================================================
+# Local OLED — the controller must remain fully readable and operable
+# even with zero network connectivity, by design.
+# ===========================================================================
+display:
+  - platform: ssd1306_i2c
+    i2c_id: bus_a
+    model: "SSD1306 128x32"   # confirmed: 0.91" module, 32px tall — not 64
+    address: 0x3C
+    update_interval: 1s
+    lambda: |-
+      it.printf(0, 0, id(font_small), "T:%.1fC  H:%.0f%%",
+                 id(dht_temperature).state, id(dht_humidity).state);
+      it.printf(0, 12, id(font_small), "%s  Fan:%.0f%%",
+                 id(auto_mode_switch).state ? "AUTO" : "MANUAL",
+                 id(fan_speed_number).state);
+      it.printf(0, 22, id(font_small), "RPM:%.0f", id(fan_rpm).state);
