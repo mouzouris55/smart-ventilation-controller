@@ -130,23 +130,6 @@ The fan tachometer is handled using an interrupt so that incoming pulses can be 
 
 This allows sensing, processing, user input and actuation to operate concurrently within the embedded system.
 
-## Project Structure
-
-```text
-smart-ventilation-controller/
-├── include/
-├── lib/
-├── src/
-│   └── main.cpp
-├── test/
-├── images/
-│   ├── smart-ventilation-controller.jpg
-│   ├── auto-mode.jpg
-│   ├── manual-mode.jpg
-│   └── development.jpg
-├── platformio.ini
-└── README.md
-```
 
 ## Project Goal
 
