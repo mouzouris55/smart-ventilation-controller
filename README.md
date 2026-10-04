@@ -51,11 +51,8 @@ Full config: [`vent-controller.yaml`](./vent-controller.yaml).
 
 ## Media
 
-- IMG_5693.jpeg
-- IMG_5692.jpeg
-- IMG_5690.jpeg
-- IMG_5689.jpeg
-- IMG_5688.jpeg
+- ![Smart Ventilation Controller](image/20260823_111333_IMG_5692.jpg)
+
 - [`docs/humidity-test-demo.mp4`](https://youtube.com/shorts/SiKE0LYzvxw?feature=share) — 1-minute test video (breath test on DHT11)
 
 ## Next iteration
