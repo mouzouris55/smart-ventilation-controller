@@ -4,7 +4,9 @@ A standalone ESP32-based ventilation controller that automatically regulates fan
 
 This project is a new embedded implementation of an earlier version that used **Home Assistant** as part of the control system. The current version moves the control logic directly onto the ESP32, eliminating network dependency from the control loop.
 
-![Smart Ventilation Controller](images/smart-ventilation-controller.jpg)
+![Smart Ventilation Controller](images/20261004_104900.jpg)
+![Smart Ventilation Controller](images/20261004_104903.jpg)
+![Smart Ventilation Controller](images/20261004_104907.jpg)
 
 ## Demo
 
